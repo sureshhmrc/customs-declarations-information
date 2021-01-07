@@ -15,9 +15,11 @@
  */
 
 package uk.gov.hmrc.customs.declarations.information.xml
+import uk.gov.hmrc.customs.declarations.information.logging.InformationLogger
+
 import scala.annotation.tailrec
 import scala.xml.transform.{RewriteRule, RuleTransformer}
-import scala.xml.{Elem, NamespaceBinding, Node}
+import scala.xml.{Elem, NamespaceBinding, Node, NodeSeq}
 
 object HelperXMLUtils {
 
@@ -35,32 +37,48 @@ object HelperXMLUtils {
     })
   }
 
-  def extractNamespaceBindings(node: Node): Seq[NamespaceBinding] = {
+  def extractNamespaceBindings(node: Node, logger: InformationLogger): Seq[NamespaceBinding] = {
     node match {
-      case element: Elem => walkNamespaceBindingHierarchy(element.scope)
+      case element: Elem => walkNamespaceBindingHierarchy(element.scope, logger = logger)
       case _             => Seq()
     }
   }
 
   @tailrec
   def walkNamespaceBindingHierarchy(ns: NamespaceBinding,
-                                    childBindings: Seq[NamespaceBinding] =
-                                     Seq.empty): Seq[NamespaceBinding] = {
+                                    childBindings: Seq[NamespaceBinding] = Seq.empty,
+                                    logger: InformationLogger): Seq[NamespaceBinding] = {
+//    logger.debugWithoutRequestContext(s"ns binding stillToProcess: ${childBindings.size}")
     if (ns.uri == null) {
       childBindings
     } else {
-      walkNamespaceBindingHierarchy(ns.parent, childBindings :+ ns)
+      walkNamespaceBindingHierarchy(ns.parent, childBindings :+ ns, logger)
     }
   }
 
   @tailrec
-  def extractNamespacesFromAllElements(node: Node, remainingNodes: Seq[Node] = Seq.empty, acc: Seq[NamespaceBinding] = Seq.empty): Seq[NamespaceBinding] = {
-    val stillToProcess = node.child ++ remainingNodes
+  def extractNamespacesFromAllElements(node: Node, remainingNodes: Seq[Node] = Seq.empty, acc: Seq[NamespaceBinding] = Seq.empty, logger: InformationLogger): Seq[NamespaceBinding] = {
+    val stillToProcess: Seq[Node] = node.child ++ remainingNodes
+    logger.debugWithoutRequestContext(s"nodes stillToProcess: ${stillToProcess.size}")
 
     if (stillToProcess.size < 1) {
-      acc ++ extractNamespaceBindings(node)
+      acc ++ extractNamespaceBindings(node, logger)
     } else {
-      extractNamespacesFromAllElements(stillToProcess.head, stillToProcess.tail, acc ++ extractNamespaceBindings(node))
+        extractNamespacesFromAllElements(stillToProcess.head, stillToProcess.tail, acc ++ extractNamespaceBindings(node, logger), logger: InformationLogger)
+    }
+  }
+
+  /**
+   * Walks the ns bindings in first two dec elements. This will include the ns from root element automatically.
+   * @param decs    two decs from first retrieveDeclarationStatusDetails element
+   * @param logger  logger passed down recursion stack
+   * @return  ns bindings extracted from dec elements. Xml parser automatically includes namespaces from root
+   */
+  def extractNamespacesFromDeclarationElements(decs: NodeSeq, logger: InformationLogger): Seq[NamespaceBinding] = {
+    logger.debugWithoutRequestContext(s"# decs to extract ns from (should always be 2) : ${decs.size}")
+
+    decs.flatMap { dec =>
+      extractNamespaceBindings(dec, logger)
     }
   }
 }

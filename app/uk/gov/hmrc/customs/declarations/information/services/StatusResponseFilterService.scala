@@ -16,11 +16,15 @@
 
 package uk.gov.hmrc.customs.declarations.information.services
 
+import uk.gov.hmrc.customs.declarations.information.logging.InformationLogger
+
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import javax.inject.{Inject, Singleton}
-import scala.xml.{NodeSeq, TopScope}
+import scala.xml.{Node, NodeSeq, TopScope}
 
 @Singleton
-class StatusResponseFilterService @Inject() () {
+class StatusResponseFilterService @Inject() (logger: InformationLogger) {
   import uk.gov.hmrc.customs.declarations.information.xml.HelperXMLUtils._
 
   val NameSpaceP="http://gov.uk/customs/declarationInformationRetrieval/status/v2"
@@ -40,11 +44,22 @@ class StatusResponseFilterService @Inject() () {
   )
 
   def transform(xml: NodeSeq): NodeSeq = {
-    val inputPrefixToUriMap = extractNamespacesFromAllElements(xml.head)
-      .map( nsb => (nsb.prefix -> nsb.uri))
-      .toMap
 
+    val inputPrefixToUriMapStartTime = LocalDateTime.now
+    val firstTwoDecsOnly: NodeSeq = (xml \ "responseDetail" \ "retrieveDeclarationStatusResponse" \ "retrieveDeclarationStatusDetailsList" \ "retrieveDeclarationStatusDetails")(1) \ "Declaration"
+    //cut down ns walk that only uses the two dec elements in first retrieveDeclarationStatusDetails element
+//    val inputPrefixToUriMap = extractNamespacesFromAllElements(xml.head, logger = logger) //current implementation on master; walks all elements; potentially slow.
+    val inputPrefixToUriMap = extractNamespacesFromDeclarationElements(firstTwoDecsOnly, logger = logger) //spike output that only walks 2 decs
+      .map(nsb => nsb.prefix -> nsb.uri)
+      .toMap
+    logDuration("inputPrefixToUriMap", inputPrefixToUriMapStartTime)
+    logger.debugWithoutRequestContext(s"inputPrefixToUriMap is $inputPrefixToUriMap")
+
+    val inputPrefixToOutputPrefixMapStartTime = LocalDateTime.now
     val inputPrefixToOutputPrefixMap = constructInputPrefixToOutputPrefixMap(inputPrefixToUriMap, outputUriToPrefixMap)
+    logDuration("inputPrefixToOutputPrefixMap", inputPrefixToOutputPrefixMapStartTime)
+    logger.debugWithoutRequestContext(s"inputPrefixToOutputPrefixMap is $inputPrefixToOutputPrefixMap")
+
     val prefixReWriter = createPrefixTransformer(inputPrefixToOutputPrefixMap, TopScope)
     val decStatusDetails: NodeSeq = xml \ "responseDetail" \ "retrieveDeclarationStatusResponse" \ "retrieveDeclarationStatusDetailsList" \\ "retrieveDeclarationStatusDetails"
 
@@ -78,4 +93,10 @@ class StatusResponseFilterService @Inject() () {
       inputPrefixToOutputPrefix :+ inputToOutputPrefix
     }.toMap
   }
+
+  protected def logDuration(msg: String, startTime: LocalDateTime): Unit ={
+    val duration = ChronoUnit.MILLIS.between(startTime, LocalDateTime.now)
+    logger.debugWithoutRequestContext(s"$msg duration was $duration ms")
+  }
+
 }

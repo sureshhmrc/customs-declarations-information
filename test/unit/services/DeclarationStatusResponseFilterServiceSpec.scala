@@ -20,6 +20,7 @@ import org.scalatest.Assertion
 import org.scalatestplus.mockito.MockitoSugar
 import play.api.test.Helpers
 import uk.gov.hmrc.customs.api.common.xml.ValidateXmlAgainstSchema
+import uk.gov.hmrc.customs.declarations.information.logging.InformationLogger
 import uk.gov.hmrc.customs.declarations.information.services.StatusResponseFilterService
 import util.StatusTestXMLData.{actualBackendStatusResponse, defaultDateTime, generateDeclarationStatusResponse, generateDeclarationStatusResponseContainingAllOptionalElements}
 import util.UnitSpec
@@ -44,7 +45,8 @@ class DeclarationStatusResponseFilterServiceSpec extends UnitSpec with MockitoSu
   def xmlValidationService: ValidateXmlAgainstSchema = new ValidateXmlAgainstSchema(schemaFile.get)
 
   trait SetUp {
-    implicit val service = new StatusResponseFilterService()
+    val mockLogger= mock[InformationLogger]
+    implicit val service = new StatusResponseFilterService(mockLogger)
     val statusResponseWithAllValues: NodeSeq = service.transform(generateDeclarationStatusResponse(acceptanceOrCreationDate = defaultDateTime))
   }
 
